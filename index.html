@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f3d3e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="AHA ナビ">
+<title>AHA 当日ナビ</title>
+<style>
+/* 1 カラムの当日用画面: 上に「今・次」、その下に道案内、最後に 1 日の流れ */
+:root {
+  --bg: #f3f6f5; --card: #ffffff; --ink: #11201f; --sub: #55625f; --line: #d5dedb;
+  --accent: #0f6e6a; --accent-ink: #ffffff; --accent-soft: #dcefec;
+  --warn: #b5470b; --warn-soft: #fde9dc; --ok: #1d7a3a; --appt: #6b4bb3; --appt-soft: #ece6f8;
+  --map-bld: #cfdad7; --map-target: #0f6e6a; --map-me: #d0342c;
+  --fs: 16px; --font: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0d1514; --card: #16211f; --ink: #e6efed; --sub: #9fb0ac; --line: #2a3936;
+  --accent: #4fc1b8; --accent-ink: #062321; --accent-soft: #173733;
+  --warn: #ff9a5c; --warn-soft: #3a2316; --ok: #6fd18d; --appt: #b49cf0; --appt-soft: #2a2340;
+  --map-bld: #33443f; --map-target: #4fc1b8; --map-me: #ff6b60; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0d1514; --card: #16211f; --ink: #e6efed; --sub: #9fb0ac; --line: #2a3936;
+  --accent: #4fc1b8; --accent-ink: #062321; --accent-soft: #173733;
+  --warn: #ff9a5c; --warn-soft: #3a2316; --ok: #6fd18d; --appt: #b49cf0; --appt-soft: #2a2340;
+  --map-bld: #33443f; --map-target: #4fc1b8; --map-me: #ff6b60; color-scheme: dark; }
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: var(--fs)/1.55 var(--font);
+  padding: env(safe-area-inset-top, 0px) max(14px, env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(14px, env(safe-area-inset-left, 0px)); }
+main { max-width: 640px; margin: 0 auto; display: grid; gap: 12px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding-top: 10px; flex-wrap: wrap; }
+h1 { font-size: 1.15rem; margin: 0; letter-spacing: .02em; }
+.clock { font-variant-numeric: tabular-nums; font-size: 1.6rem; font-weight: 700; }
+.clock small { font-size: .78rem; font-weight: 500; color: var(--sub); margin-left: 6px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; min-width: 0; }
+.label { font-size: .72rem; font-weight: 700; letter-spacing: .08em; color: var(--sub); text-transform: uppercase; }
+.big { font-size: 1.25rem; font-weight: 700; line-height: 1.35; margin: 2px 0 4px; text-wrap: balance; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.tm { font-variant-numeric: tabular-nums; font-weight: 700; }
+.code { display: inline-block; font-size: .78rem; font-weight: 700; padding: 1px 7px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
+.code.appt { background: var(--appt-soft); color: var(--appt); }
+.room { font-weight: 700; }
+.sub { color: var(--sub); font-size: .88rem; }
+.note { font-size: .9rem; background: var(--bg); border-radius: 8px; padding: 6px 9px; margin-top: 6px; overflow-wrap: anywhere; }
+.pill { display: inline-block; font-size: .8rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-variant-numeric: tabular-nums; }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.alert { background: var(--warn-soft); color: var(--warn); border-radius: 10px; padding: 8px 11px; font-weight: 700; }
+button, .btn { font: inherit; font-size: .92rem; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 10px; padding: 8px 12px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+button.primary, .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+button:focus-visible, .btn:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* 道案内 */
+.nav { display: grid; grid-template-columns: 112px 1fr; gap: 12px; align-items: center; }
+.compass { width: 112px; height: 112px; border-radius: 50%; border: 2px solid var(--line); position: relative; display: grid; place-items: center; background: var(--bg); }
+.compass svg { width: 74px; height: 74px; transition: transform .25s ease-out; }
+.compass .n { position: absolute; top: 3px; left: 50%; transform: translateX(-50%); font-size: .7rem; font-weight: 700; color: var(--sub); }
+.compass.inside svg { opacity: .25; }
+.dist { font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+ol.steps { margin: 6px 0 0; padding-left: 1.3em; display: grid; gap: 4px; }
+ol.steps li::marker { font-weight: 700; color: var(--accent); }
+.where { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.where button { font-size: .8rem; padding: 4px 9px; border-radius: 999px; }
+.where button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.figs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+@media (max-width: 520px) { .figs { grid-template-columns: 1fr; } }
+.fig { position: relative; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff; min-width: 0; }
+.fig img { display: block; width: 100%; height: auto; }
+.fig .pic { position: relative; }
+.fig svg.ov { position: absolute; inset: 0; width: 100%; height: 100%; }
+.fig .cap { font-size: .78rem; font-weight: 700; background: var(--card); color: var(--ink); border-top: 1px solid var(--line); padding: 4px 8px; }
+canvas#mini { display: block; width: 100%; height: 220px; background: var(--bg); }
+@keyframes pulse { 0%,100% { r: 9; opacity: 1 } 50% { r: 13; opacity: .55 } }
+.pulse { animation: pulse 1.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } .compass svg { transition: none; } }
+/* 1 日の流れ */
+.days { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.days button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); font-weight: 700; }
+ul.tl { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+ul.tl li { display: grid; grid-template-columns: 58px 1fr; gap: 8px; padding: 8px; border-radius: 10px; border: 1px solid var(--line); cursor: pointer; }
+ul.tl li.past { opacity: .5; }
+ul.tl li.now { border-color: var(--accent); box-shadow: inset 4px 0 0 var(--accent); }
+ul.tl li.sel { background: var(--accent-soft); }
+ul.tl .t1 { font-variant-numeric: tabular-nums; font-weight: 700; font-size: .9rem; line-height: 1.3; }
+ul.tl .t1 span { display: block; color: var(--sub); font-weight: 500; }
+ul.tl .ti { font-size: .92rem; min-width: 0; overflow-wrap: anywhere; }
+ul.tl .gap { grid-column: 1 / -1; font-size: .78rem; color: var(--warn); font-weight: 700; }
+textarea { width: 100%; min-height: 110px; font: .85rem/1.4 ui-monospace, Menlo, monospace; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--bg); color: var(--ink); }
+details > summary { cursor: pointer; font-weight: 700; }
+.gps { font-size: .85rem; }
+.gps b { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>AHA 2026 当日ナビ</h1>
+    <div class="clock" id="clock" aria-live="off">--:--</div>
+  </header>
+
+  <section class="card gps" id="gpsCard">
+    <div class="row" style="justify-content:space-between">
+      <div id="gpsState">位置情報はオフです</div>
+      <button class="primary" id="gpsOn" type="button">位置情報とコンパスをオン</button>
+    </div>
+  </section>
+
+  <div id="alertBox" hidden></div>
+  <section class="card" id="nowCard" hidden></section>
+  <section class="card" id="nextCard"></section>
+  <section class="card" id="navCard" hidden></section>
+
+  <section class="card">
+    <div class="days" id="days" role="group" aria-label="日付"></div>
+    <ul class="tl" id="tl"></ul>
+  </section>
+
+  <section class="card">
+    <details id="impBox">
+      <summary>予定を取り込む</summary>
+      <p class="sub">プログラム検索アプリのマイリストで「当日ナビ用にコピー」を押し、ここに貼り付けてください。予定はこの端末の中だけに保存されます。</p>
+      <textarea id="impText" placeholder='{"kind":"aha26-nav", ...}'></textarea>
+      <div class="row"><button class="primary" id="impDo" type="button">取り込む</button><button id="sample" type="button">見本で試す</button><button id="wipe" type="button">予定を消す</button></div>
+      <div class="sub" id="impMsg"></div>
+    </details>
+    <details id="simBox" style="margin-top:10px">
+      <summary>時刻を指定して試す</summary>
+      <p class="sub">会期前に動きを確かめるときに使います。指定した時刻から時計が進みます。</p>
+      <div class="row"><select id="simDay"></select><input type="time" id="simTime" value="08:20"><button id="simOn" type="button">この時刻にする</button><button id="simOff" type="button">現在時刻に戻す</button></div>
+    </details>
+  </section>
+  <p class="sub">時刻はすべてシカゴ時間です。建物の位置は OpenStreetMap、館内図は McCormick Place の立体図をもとにした目安です。屋内では GPS が数十 m ずれることがあり、階はわかりません。</p>
+</main>
+
+<script>
+const VENUE = {"regions":{"S100":{"node":"south_l1"},"S101":{"node":"south_l1"},"S102":{"node":"south_l1"},"S103":{"node":"south_l1"},"S104":{"node":"south_l1"},"S105":{"node":"south_l1"},"S106":{"node":"south_l1"},"N226":{"node":"north_l2"},"N227":{"node":"north_l2"},"N228":{"node":"north_l2"},"N229":{"node":"north_l2"},"N230A":{"node":"north_l2"},"N230B":{"node":"north_l2"},"N230":{"node":"north_l2"},"N231":{"node":"north_l2"},"N426":{"node":"north_l4"},"N427A":{"node":"north_l4"},"N427B":{"node":"north_l4"},"N427C":{"node":"north_l4"},"N427D":{"node":"north_l4"},"N427":{"node":"north_l4"},"N1xx":{"node":"north_l1"},"S40x":{"node":"south_l4"},"center_stage":{"node":"north_l3"},"special_session":{"node":"north_l3"},"heart_theater_1":{"node":"south_l3"},"heart_theater_2":{"node":"south_l3"},"learning_studio_1":{"node":"south_l3"},"learning_studio_2":{"node":"south_l3"},"learning_studio_x":{"node":"south_l3"},"cardiotalk_1":{"node":"south_l3"},"cardiotalk_2":{"node":"south_l3"},"heart_hub":{"node":"south_l3"},"csz1":{"node":"south_l3"},"csz2":{"node":"south_l3"},"psz":{"node":"south_l3"},"bsz":{"node":"south_l3"},"hip":{"node":"south_l3"},"sim":{"node":"south_l3"},"case_arena":{"node":"south_l3"},"st_hall_any":{"node":"south_l3"},"lakeside_any":{"node":"lakeside"},"hyatt":{"node":"hyatt"},"west_any":{"node":"west"},"marriott":{"node":"hyatt"},"member_lounge":{"node":"south_l3"}},"nodes":{"south_l3":{"label":"South 3 階（S&T Hall）"},"south_l1":{"label":"South 1 階（S10x）"},"south_l4":{"label":"South 4 階（S40x）"},"south_l5":{"label":"South 5 階（S50x）"},"north_l3":{"label":"North 3 階（Center Stage）"},"north_l2":{"label":"North 2 階（N22x）"},"north_l1":{"label":"North 1 階（N1xx）"},"north_l4":{"label":"North 4 階（N42x）"},"lakeside":{"label":"Lakeside Center"},"hyatt":{"label":"Hyatt Regency（隣接ホテル）"},"west":{"label":"West Building"}},"walk":{"south_l3":{"south_l1":7,"south_l4":5,"south_l5":7,"north_l3":8,"north_l2":10,"north_l1":12,"north_l4":12,"lakeside":12,"hyatt":12,"west":12},"south_l1":{"south_l4":8,"south_l5":10,"north_l3":12,"north_l2":14,"north_l1":15,"north_l4":16,"lakeside":18,"hyatt":8,"west":10},"south_l4":{"south_l5":3,"north_l3":8,"north_l2":10,"north_l1":12,"north_l4":10,"lakeside":12,"hyatt":15,"west":15},"south_l5":{"north_l3":10,"north_l2":12,"north_l1":14,"north_l4":12,"lakeside":14,"hyatt":17,"west":17},"north_l3":{"north_l2":3,"north_l1":5,"north_l4":4,"lakeside":8,"hyatt":12,"west":18},"north_l2":{"north_l1":3,"north_l4":6,"lakeside":10,"hyatt":10,"west":20},"north_l1":{"north_l4":8,"lakeside":12,"hyatt":10,"west":22},"north_l4":{"lakeside":10,"hyatt":15,"west":22},"lakeside":{"hyatt":18,"west":25},"hyatt":{"west":15}},"node_building":{"south_l1":"south","south_l3":"south","south_l4":"south","south_l5":"south","north_l1":"north","north_l2":"north","north_l3":"north","north_l4":"north","lakeside":"lakeside","west":"west","hyatt":"hyatt"},"buildings":{"south":{"img":"south.png","w":523,"h":429,"title":"South Building","levels":{"l5":{"pts":[[305,50],[322,58],[378,128],[366,142],[308,82]],"label":"5F: S501–S505"},"l4":{"pts":[[222,165],[252,118],[300,100],[322,112],[386,186],[376,196],[300,140]],"label":"4F: S401–S405・Vista Ballroom S406"},"l3":{"pts":[[222,205],[300,140],[386,200],[380,262],[300,316],[222,252]],"label":"3F: Hall A = Science & Technology Hall、Grand Concourse"},"l25":{"pts":[[222,262],[252,246],[264,292],[236,306]],"label":"2.5F: Business Center・Food Court・Metra"},"l1":{"pts":[[225,306],[266,290],[322,396],[292,420],[225,342]],"label":"1F: Grand Ballroom S100、会議室 S101–S106、Gate 1–4、ホテル連絡"}},"points":{"S100":[257,322],"S101":[266,346],"S102":[273,356],"S103":[281,367],"S104":[289,378],"S105":[297,390],"S106":[303,402],"S40x":[300,135],"S401":[262,150],"S402":[276,136],"S403":[290,126],"S404":[320,120],"S405":[350,150],"S406":[360,165],"S501":[330,95],"S502":[340,100],"S503":[350,108],"S504":[360,116],"S505":[368,126],"st_hall_any":[300,225],"heart_hub":[305,225],"heart_theater_1":[285,232],"heart_theater_2":[332,216],"learning_studio_1":[336,186],"learning_studio_2":[348,200],"learning_studio_x":[340,194],"cardiotalk_1":[286,186],"cardiotalk_2":[316,256],"csz1":[266,266],"csz2":[338,252],"psz":[352,232],"bsz":[286,176],"hip":[322,236],"sim":[337,238],"case_arena":[300,225],"member_lounge":[312,242],"entrance":[232,232]}},"north":{"img":"north.png","w":450,"h":410,"title":"North Building","levels":{"l4":{"pts":[[355,80],[405,85],[426,120],[400,166],[350,152]],"label":"4F: N426–N427"},"l3":{"pts":[[185,80],[232,60],[426,162],[426,196],[362,272],[185,166]],"label":"3F: Hall B（Center Stage）、Grand Concourse"},"l2":{"pts":[[215,190],[242,180],[356,266],[396,300],[372,322],[215,232]],"label":"2F: N226–N231・Food Service"},"l1":{"pts":[[215,250],[252,240],[396,332],[402,352],[372,402],[215,302]],"label":"1F: Hall C、N126–N140、Gate 20–22"}},"points":{"center_stage":[310,192],"special_session":[300,182],"N231":[346,286],"N230A":[356,278],"N230B":[362,270],"N230":[356,278],"N229":[350,264],"N228":[340,276],"N227":[334,284],"N226":[340,292],"N1xx":[366,366],"N427D":[364,100],"N427B":[374,110],"N427C":[374,110],"N427":[374,110],"N427A":[386,122],"N426":[402,136]}},"lakeside":{"img":"lakeside.png","w":452,"h":410,"title":"Lakeside Center（East Building）","levels":{"l4":{"pts":[[365,90],[415,100],[410,150],[355,146]],"label":"4F: E450–E451"},"l3":{"pts":[[225,70],[270,65],[430,165],[400,246],[225,160]],"label":"3F: Hall D（Poster Hall）、Lakeside Ballroom E354、Sky Bridge"},"l2":{"pts":[[225,180],[260,170],[425,240],[395,320],[225,246]],"label":"2F: Hall E、E250–E272、Arie Crown Theater"},"l1":{"pts":[[225,275],[250,265],[430,320],[400,400],[225,320]],"label":"1F: Offices"}},"points":{"lakeside_any":[310,140],"poster":[310,140],"E354":[372,186]}},"west":{"img":"west.png","w":534,"h":414,"title":"West Building","levels":{"l5":{"pts":[[315,45],[360,45],[366,66],[346,96],[315,100]],"label":"5F: Rooftop Garden"},"l4":{"pts":[[305,110],[410,70],[505,105],[500,120],[430,230],[305,146]],"label":"4F: W470–W476"},"l3":{"pts":[[305,165],[400,135],[505,165],[500,180],[430,276],[305,216]],"label":"3F: Hall F、Skyline Ballroom W375、Central Concourse"},"l2":{"pts":[[305,216],[400,200],[505,220],[500,240],[430,330],[305,266]],"label":"2F: Business Center・Food Court"},"l1":{"pts":[[305,300],[360,290],[490,310],[490,336],[430,400],[305,346]],"label":"1F: W175–W196、Transportation Center"}},"points":{"west_any":[405,222],"W375":[350,176],"W1xx":[380,350]}}},"geo":{"north":{"c":[41.85345,-87.61627],"poly":[[41.8552,-87.61813],[41.85161,-87.6167],[41.85137,-87.6175],[41.85203,-87.61454],[41.85575,-87.61602],[41.85563,-87.61622],[41.8552,-87.61813]]},"south":{"c":[41.85005,-87.61595],"poly":[[41.85067,-87.61827],[41.85031,-87.61825],[41.85,-87.61812],[41.84968,-87.618],[41.84905,-87.61775],[41.84843,-87.61735],[41.84844,-87.61588],[41.84831,-87.61587],[41.84844,-87.61496],[41.84897,-87.61407],[41.84953,-87.61376],[41.85021,-87.6138],[41.85171,-87.61439],[41.85177,-87.6148],[41.85113,-87.61772],[41.85085,-87.61772],[41.85067,-87.61827]]},"lakeside":{"c":[41.85345,-87.61241],"poly":[[41.85464,-87.61404],[41.85108,-87.61263],[41.85156,-87.61049],[41.85511,-87.61192],[41.85464,-87.61404]]},"west":{"c":[41.85062,-87.62066],"poly":[[41.85225,-87.62209],[41.85015,-87.62204],[41.84861,-87.622],[41.84866,-87.61857],[41.84919,-87.61857],[41.84919,-87.61878],[41.85026,-87.61921],[41.85086,-87.61926],[41.85078,-87.61962],[41.85077,-87.62035],[41.85108,-87.62045],[41.85238,-87.6205],[41.85261,-87.62081],[41.8526,-87.6218],[41.85234,-87.6219],[41.85225,-87.62209]]},"hyatt":{"c":[41.85197,-87.61796],"poly":[[41.85201,-87.61873],[41.85183,-87.61867],[41.85187,-87.61772],[41.85152,-87.61772],[41.85163,-87.61708],[41.85203,-87.61723],[41.85247,-87.61753],[41.85245,-87.61869],[41.85201,-87.61873]]},"hilton":{"c":[41.87251,-87.62511],"poly":[[41.87304,-87.62579],[41.87194,-87.62577],[41.87197,-87.62444],[41.87307,-87.62446],[41.87304,-87.62579]]},"ord":{"c":[41.97861,-87.90477]}}}; //@@VENUE
+const SAMPLE = {"kind":"aha26-nav","exported":"sample","items":[{"id":"S46","code":"CA.CVS.07","title":"Emerging Mechanisms and Novel Therapeutic Targets in Atrial Fibrillation","d":"2026-11-07","s":"09:45","e":"11:00","loc":"S102BC","note":"見本：10:15 に抜けて次へ"},{"id":"S35","code":"AR.CVS.04","title":"Arrhythmia Research Summit: Latest Advances in Atrial Fibrillation","d":"2026-11-07","s":"09:45","e":"11:00","loc":"N227AB","note":""},{"id":"S1122","code":"LS.04","title":"Redemplo® (plozasiran): A Treatment to Lower Triglycerides for Adults With Familial Chylomicronemia Syndrome (FCS)","d":"2026-11-07","s":"11:15","e":"12:00","loc":"Learning Studio 2‚ Science and Technology Hall‚ South Hall","note":""},{"id":"S434","code":"CO.MDP.10","title":"Complex Structural Heart Interventions: Procedural Challenges, Rescue Techniques, and Clinical Outcomes","d":"2026-11-07","s":"13:45","e":"14:20","loc":"Moderated Digital Poster 12‚ Clinical Science Zone 2","note":""},{"id":"S262","code":"CC.CVS.04","title":"Cardiac Arrest Centers: Are We Ready for Regionalization?","d":"2026-11-07","s":"15:15","e":"16:30","loc":"S405B","note":""},{"id":"S42","code":"AR.CVS.10","title":"The Latest Trials About AF Stroke Prevention and Debate about Role of LAAO + AF Ablation","d":"2026-11-08","s":"08:00","e":"09:15","loc":"N227AB","note":""},{"id":"S334","code":"CD.ME.03","title":"Nobel Laureate Address","d":"2026-11-08","s":"09:45","e":"11:00","loc":"S100A","note":""},{"id":"S885","code":"MC.APBS.03","title":"Emerging Mechanisms of RNA-Based Regulation in Heart Disease","d":"2026-11-08","s":"11:30","e":"12:30","loc":"Basic Science Zone‚ Science and Technology Hall‚ South Hall‚ Level 3","note":""},{"id":"S1100","code":"PS.01","title":"Presidential Session","d":"2026-11-08","s":"13:30","e":"15:00","loc":"Center Stage‚ North Hall‚ Level 3","note":""}]}; //@@SAMPLE
+const TZ = 'America/Chicago';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store = { get(k){ try { return localStorage.getItem(k); } catch(e) { return null; } }, set(k,v){ try { localStorage.setItem(k,v); } catch(e) {} }, del(k){ try { localStorage.removeItem(k); } catch(e) {} } };
+const toMin = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+const hhmm = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+const DOW = ['日','月','火','水','木','金','土'];
+const dayLabel = d => { const [y, mo, da] = d.split('-').map(Number); const w = new Date(Date.UTC(y, mo - 1, da)).getUTCDay(); return `${mo}/${da}（${DOW[w]}）`; };
+
+// ---- 予定 ----
+let PLAN = null;
+try { PLAN = JSON.parse(store.get('nav_plan') || 'null'); } catch (e) { PLAN = null; }
+function setPlan(p, save) { PLAN = p; if (save) store.set('nav_plan', JSON.stringify(p)); selId = null; render(); }
+function parsePlan(text) {
+  const j = JSON.parse(text);
+  if (!j || !Array.isArray(j.items)) throw new Error('予定の一覧が見つかりません');
+  const items = j.items.filter(x => x && /^\d{4}-\d\d-\d\d$/.test(x.d) && /^\d\d:\d\d$/.test(x.s) && /^\d\d:\d\d$/.test(x.e))
+    .map(x => ({id: String(x.id), code: String(x.code || ''), title: String(x.title || ''), d: x.d, s: x.s, e: x.e, loc: String(x.loc || ''), note: String(x.note || ''), appt: !!x.appt}));
+  if (!items.length) throw new Error('日付と時刻のある予定がありません');
+  return {kind: 'aha26-nav', exported: j.exported || '', items: items.sort((a, b) => (a.d + a.s).localeCompare(b.d + b.s))};
+}
+
+// ---- 時刻（シカゴ時間。試すときは指定時刻から進める） ----
+const fmt = new Intl.DateTimeFormat('en-CA', {timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'});
+const fmtJP = new Intl.DateTimeFormat('ja-JP', {timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'});
+let SIM = null; try { SIM = JSON.parse(store.get('nav_sim') || 'null'); } catch (e) { SIM = null; }
+function nowParts() {
+  if (SIM) { const el = Math.floor((Date.now() - SIM.at) / 1000); const sec = SIM.min * 60 + el; return {d: SIM.d, min: Math.floor(sec / 60), sec: sec % 60, sim: true}; }
+  const p = Object.fromEntries(fmt.formatToParts(new Date()).map(x => [x.type, x.value]));
+  return {d: `${p.year}-${p.month}-${p.day}`, min: +p.hour * 60 + +p.minute, sec: +p.second, sim: false};
+}
+
+// ---- 会場 ----
+function parseVenue(loc) {
+  const L = (loc || '').replace(/‚/g, ',');
+  const R = VENUE.regions; const pick = k => R[k] ? {key: k, ...R[k]} : null;
+  let m;
+  if (!L || /未定/.test(L)) return null;
+  if ((m = L.match(/N427D/))) return pick('N427D');
+  if ((m = L.match(/^([SN])(\d)(\d\d)([A-Z]*)/))) {
+    const b = m[1], lv = +m[2], num = b + m[2] + m[3], suf = m[4];
+    if (b === 'S') { return pick(num) || (lv >= 4 ? pick('S40x') : pick('S100')); }
+    if (lv === 2) return pick(num + suf) || pick(num) || pick('N231');
+    if (lv === 4) return pick(num + suf[0]) || pick(num) || pick('N427');
+    if (lv === 1) return pick('N1xx');
+    return pick('center_stage');
+  }
+  if (/Center Stage/i.test(L)) return pick('center_stage');
+  if (/Special Session/i.test(L)) return pick('special_session');
+  if ((m = L.match(/Heart Theater (\d)/i))) return pick('heart_theater_' + m[1]) || pick('heart_hub');
+  if ((m = L.match(/Learning Studio (\d)/i))) return pick('learning_studio_' + m[1]) || pick('learning_studio_x');
+  if ((m = L.match(/CardioTalk (\d)/i))) return pick('cardiotalk_' + m[1]) || pick('heart_hub');
+  if ((m = L.match(/Moderated Digital Poster (\d+)/i))) { const n = +m[1]; return pick(n <= 9 ? 'csz1' : n <= 18 ? 'csz2' : n <= 23 ? 'psz' : 'bsz'); }
+  if (/Clinical Science Zone 1/i.test(L)) return pick('csz1');
+  if (/Clinical Science Zone 2/i.test(L)) return pick('csz2');
+  if (/Population Science Zone/i.test(L)) return pick('psz');
+  if (/Basic Science Zone/i.test(L)) return pick('bsz');
+  if (/Health Innovation Pavilion/i.test(L)) return pick('hip');
+  if (/Simulation/i.test(L)) return pick('sim');
+  if (/Clinical Case Arena/i.test(L)) return pick('case_arena');
+  if (/Heart Hub/i.test(L)) return pick('heart_hub');
+  if (/Science and Technology Hall|South Hall|Hall A\b/i.test(L)) return pick('st_hall_any');
+  if (/Lakeside|E354|Poster Hall/i.test(L)) return pick('lakeside_any');
+  if (/Hyatt/i.test(L)) return pick('hyatt');
+  if (/Marriott/i.test(L)) return pick('marriott');
+  if (/Member Lounge/i.test(L)) return pick('member_lounge');
+  if (/^W\d/.test(L) || /West Building/i.test(L)) return pick('west_any');
+  return null;
+}
+// 予定の行き先: {node 館内の階, bld 建物（GPS 用）, key 図の印, label}
+function placeOf(it) {
+  const L = (it.loc || '') + ' ' + (it.appt ? it.title : '');
+  if (/オヘア|O'?Hare|\bORD\b|空港/i.test(L)) return {bld: 'ord', label: "O'Hare 空港"};
+  if (/ヒルトン|Hilton/i.test(L) && !/McCormick/i.test(L)) return {bld: 'hilton', label: 'Hilton Chicago'};
+  const v = parseVenue(it.loc);
+  if (!v) return null;
+  const node = v.node; const bld = node === 'hyatt' ? 'hyatt' : (VENUE.node_building[node] || null);
+  return {node, bld, key: v.key, label: (VENUE.nodes[node] || {}).label || ''};
+}
+function walkMin(a, b) { if (!a || !b) return null; if (a === b) return 3; const W = VENUE.walk; return (W[a] && W[a][b]) || (W[b] && W[b][a]) || null; }
+const BNAME = {north: 'North', south: 'South', lakeside: 'Lakeside', west: 'West', hyatt: 'Hyatt', hilton: 'Hilton', ord: "O'Hare"};
+const lvOf = node => { const m = /_l(\d+)$/.exec(node || ''); return m ? +m[1] : null; };
+const lvTxt = n => n === 25 ? '2.5 階' : n + ' 階';
+// 館内の道順（目安）。Grand Concourse は North 3F ⇄ South 3F、West へは South 1F の Sky Bridge
+function routeSteps(from, to) {
+  const tb = to.bld, tl = lvOf(to.node), dest = `${to.label}${to.room ? '：' + to.room : ''}`;
+  if (!to.node) {
+    if (tb === 'ord') return ['ホテルに荷物を取りに戻るか、会場から直接向かうかを先に決める', "タクシーまたは CTA ブルーラインで O'Hare へ（道路状況で 40〜70 分）", '出発ターミナルを航空券で確認'];
+    if (tb === 'hilton') return ['会場のシャトル乗り場（South 1F Gate 1–3 など）からホテル行きシャトル、またはタクシー', 'Hilton Chicago（720 S Michigan Ave）まで車で 10〜15 分'];
+    return ['行き先の場所が登録されていません。予定の場所を入れてください'];
+  }
+  if (!from || !from.node) {
+    const gate = tb === 'north' ? 'North 1F の Gate 20–22' : tb === 'lakeside' ? 'Lakeside 北側の Gate 31–34' : tb === 'west' ? 'West の Gate 43–44' : 'South 1F の Gate 1–3';
+    const s = [`ホテルからシャトルかタクシーで McCormick Place へ（降車は ${gate} が近い）`];
+    if (tb === 'south' && tl === 3) s.push('South 1F からエスカレーターで 3 階の Hall A（Science & Technology Hall）へ');
+    else if (tb === 'south' && tl === 1) s.push('South 1F のロビーを奥へ進むと会議室 S100–S106');
+    else if (tb === 'north' && tl !== 1) s.push(`North 1F からエスカレーターで ${lvTxt(tl)}へ`);
+    s.push(dest + ' へ'); return s;
+  }
+  const fb = from.bld, fl = lvOf(from.node);
+  if (from.node === to.node) return ['同じ階です。図の印の場所へ（2〜3 分）', dest];
+  const s = [];
+  if (fb === tb) { s.push(`${BNAME[tb]} の中で、エスカレーターかエレベーターで ${lvTxt(fl)} → ${lvTxt(tl)}`); s.push(dest + ' へ'); return s; }
+  const NS = new Set(['north', 'south']);
+  if (NS.has(fb) && NS.has(tb)) {
+    if (fl !== 3) s.push(`${BNAME[fb]} の ${lvTxt(fl)} からエスカレーターで 3 階へ`);
+    s.push(`3 階の Grand Concourse（屋内の連絡通路）を「${BNAME[tb]} Building」の案内に沿って進む`);
+    if (tl !== 3) s.push(`${BNAME[tb]} に入ったらエスカレーターで ${lvTxt(tl)}へ`);
+    s.push(dest + ' へ'); return s;
+  }
+  if (tb === 'west' || fb === 'west') {
+    if (fb === 'south' && fl !== 1) s.push(`South の ${lvTxt(fl)} から 1 階へ`);
+    if (fb === 'north') s.push('North 3 階から Grand Concourse で South へ、さらに 1 階へ');
+    s.push('South 1 階の Sky Bridge を通って West へ（または戻る）');
+    s.push(dest + ' へ'); return s;
+  }
+  if (tb === 'lakeside' || fb === 'lakeside') {
+    s.push('Lakeside 3 階の Sky Bridge で Lakeside と North/South を行き来する（Lake Shore Drive の上を渡る）');
+    if (tl && tb !== 'lakeside' && tl !== 3) s.push(`${BNAME[tb]} に入ったら ${lvTxt(tl)}へ`);
+    s.push(dest + ' へ'); return s;
+  }
+  if (tb === 'hyatt' || fb === 'hyatt') { s.push('Hyatt Regency は South 1 階と North の間の連絡通路でつながっています（案内板「Hyatt」）'); s.push(dest + ' へ'); return s; }
+  s.push(dest + ' へ'); return s;
+}
+
+// ---- GPS ----
+let pos = null, heading = null, gpsErr = '', watching = false;
+const R_EARTH = 6371000, rad = d => d * Math.PI / 180, deg = r => r * 180 / Math.PI;
+function distM(a, b) { const dl = rad(b[0] - a[0]), dn = rad(b[1] - a[1]); const h = Math.sin(dl / 2) ** 2 + Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dn / 2) ** 2; return 2 * R_EARTH * Math.asin(Math.sqrt(h)); }
+function bearing(a, b) { const y = Math.sin(rad(b[1] - a[1])) * Math.cos(rad(b[0])); const x = Math.cos(rad(a[0])) * Math.sin(rad(b[0])) - Math.sin(rad(a[0])) * Math.cos(rad(b[0])) * Math.cos(rad(b[1] - a[1])); return (deg(Math.atan2(y, x)) + 360) % 360; }
+const DIR16 = ['北','北北東','北東','東北東','東','東南東','南東','南南東','南','南南西','南西','西南西','西','西北西','北西','北北西'];
+const dirName = b => DIR16[Math.round(b / 22.5) % 16];
+function inPoly(p, poly) { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [yi, xi] = poly[i], [yj, xj] = poly[j]; if ((yi > p[0]) !== (yj > p[0]) && p[1] < (xj - xi) * (p[0] - yi) / (yj - yi) + xi) c = !c; } return c; }
+// 一番近い建物（中にいれば 0 m）
+function whereAmI() {
+  if (!pos) return null;
+  const p = [pos.lat, pos.lng]; let best = null;
+  for (const [k, g] of Object.entries(VENUE.geo)) {
+    if (!g.poly) continue;
+    const inside = inPoly(p, g.poly);
+    const d = inside ? 0 : Math.min(...g.poly.map(q => distM(p, q)));
+    if (!best || d < best.d) best = {bld: k, d, inside};
+  }
+  return best;
+}
+function startGps() {
+  if (!('geolocation' in navigator)) { gpsErr = 'この端末では位置情報が使えません'; render(); return; }
+  if (watching) return; watching = true;
+  navigator.geolocation.watchPosition(p => { pos = {lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy, t: Date.now()}; gpsErr = ''; store.set('nav_gps', '1'); renderNav(); renderGps(); },
+    e => { if (e.code === 1) watching = false; gpsErr = e.code === 1 ? '位置情報が許可されていません。ブラウザの設定でこのサイトに位置情報を許可してください' : '位置を取得できません（屋内では時間がかかることがあります）'; renderGps(); },
+    {enableHighAccuracy: true, maximumAge: 5000, timeout: 30000});
+}
+function onOrient(e) {
+  let h = null;
+  if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading;
+  else if (e.absolute && typeof e.alpha === 'number') h = (360 - e.alpha) % 360;
+  if (h == null) return;
+  const so = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+  heading = (h + so + 360) % 360; turnArrow();
+}
+async function startCompass() {
+  try {
+    if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const r = await DeviceOrientationEvent.requestPermission(); if (r !== 'granted') return;   // iPhone はボタンを押したときにだけ許可を聞ける
+      window.addEventListener('deviceorientation', onOrient, true);
+    } else if ('ondeviceorientationabsolute' in window) window.addEventListener('deviceorientationabsolute', onOrient, true);
+    else window.addEventListener('deviceorientation', onOrient, true);
+  } catch (e) { /* コンパスなしで動かす */ }
+}
+$('#gpsOn').onclick = () => { startCompass(); startGps(); renderGps(); };
+function renderGps() {
+  const el = $('#gpsState'); const btn = $('#gpsOn');
+  if (gpsErr) { el.innerHTML = `<span style="color:var(--warn);font-weight:700">${esc(gpsErr)}</span>`; btn.hidden = false; return; }
+  if (!watching) { el.textContent = '位置情報はオフです'; btn.hidden = false; return; }
+  btn.hidden = heading != null;   // コンパスだけ後から許可できるように残す
+  btn.textContent = 'コンパスをオン';
+  if (!pos) { el.textContent = '現在地を探しています…'; return; }
+  const w = whereAmI(); const acc = Math.round(pos.acc);
+  const at = !w ? '' : w.inside ? `<b>${BNAME[w.bld]}</b> の中` : w.d < 150 ? `<b>${BNAME[w.bld]}</b> の近く（${Math.round(w.d)} m）` : '会場の外';
+  el.innerHTML = `現在地: ${at || '会場の外'}　<span class="sub">誤差 ±${acc} m${heading != null ? '・コンパス有効' : ''}</span>`;
+}
+
+// ---- 画面 ----
+let selId = null, curDay = null, fromOverride = null;
+function dayItems(d) { return PLAN ? PLAN.items.filter(x => x.d === d) : []; }
+function leaveAt(it) { const m = /(\d{1,2}):(\d\d)\s*に抜け/.exec(it.note || ''); return m ? toMin(m[1].padStart(2, '0') + ':' + m[2]) : null; }
+function state() {
+  const n = nowParts(); const items = PLAN ? PLAN.items : [];
+  const today = items.filter(x => x.d === n.d);
+  // メモに「抜ける時刻」があれば、そこまでをその予定の時間とみなす
+  const effEnd = it => { const l = leaveAt(it); return l != null && l > toMin(it.s) && l < toMin(it.e) ? l : toMin(it.e); };
+  // 重なっているときは、抜ける時刻のある予定（先に入る方）を「今」にし、残りを「次」にする
+  const cur = today.filter(x => toMin(x.s) <= n.min && n.min < effEnd(x))
+    .sort((a, b) => ((leaveAt(b) != null) - (leaveAt(a) != null)) || toMin(a.s) - toMin(b.s));
+  const nowIt = cur[0] || null;
+  const next = cur[1] || items.find(x => x.d > n.d || (x.d === n.d && toMin(x.s) > n.min)) || null;
+  return {n, today, nowIt, next, effEnd};
+}
+function prevOf(it) { const items = PLAN.items; const i = items.indexOf(it); for (let k = i - 1; k >= 0; k--) { if (items[k].d !== it.d) return null; if (toMin(items[k].s) < toMin(it.s)) return items[k]; } return null; }
+function itemHead(it) {
+  const p = placeOf(it);
+  return `<div class="row"><span class="code ${it.appt ? 'appt' : ''}">${esc(it.code)}</span><span class="tm">${it.s}–${it.e}</span>${it.d !== nowParts().d ? `<span class="sub">${dayLabel(it.d)}</span>` : ''}</div>
+    <div class="big">${esc(it.title)}</div>
+    <div><span class="room">${esc(it.loc || '場所未定')}</span>${p && p.label ? ` <span class="sub">｜${esc(p.label)}</span>` : ''}</div>
+    ${it.note ? `<div class="note">${esc(it.note)}</div>` : ''}`;
+}
+const until = m => m < 60 ? `${m} 分` : `${Math.floor(m / 60)} 時間 ${m % 60} 分`;
+function render() {
+  const st = state(); const {n} = st;
+  $('#clock').innerHTML = `${hhmm(n.min)}<small>シカゴ ${dayLabel(n.d)}${n.sim ? '・試験中' : ''}</small>`;
+  if (!PLAN) {
+    $('#nowCard').hidden = true; $('#navCard').hidden = true; $('#alertBox').hidden = true;
+    $('#nextCard').innerHTML = `<div class="label">予定がまだありません</div><p>プログラム検索アプリのマイリストで<b>「当日ナビ用にコピー」</b>を押し、下の「予定を取り込む」に貼り付けてください。</p><div class="row"><button class="primary" type="button" id="openImp">予定を取り込む</button><button type="button" id="openSample">見本で試す</button></div>`;
+    $('#openImp').onclick = () => { $('#impBox').open = true; $('#impText').focus(); };
+    $('#openSample').onclick = loadSample;
+    $('#days').innerHTML = ''; $('#tl').innerHTML = ''; return;
+  }
+  // 今
+  if (st.nowIt) {
+    const it = st.nowIt; const end = st.effEnd(it); const left = end - n.min; const l = leaveAt(it);
+    $('#nowCard').hidden = false;
+    $('#nowCard').innerHTML = `<div class="row" style="justify-content:space-between"><span class="label">今</span><span class="pill ${left <= 5 ? 'warn' : ''}">${l != null && end === l ? `${hhmm(l)} に抜ける・あと ${until(left)}` : `終了まで ${until(left)}`}</span></div>${itemHead(it)}`;
+  } else $('#nowCard').hidden = true;
+  // 抜ける・出発の知らせ
+  const alerts = [];
+  if (st.nowIt) { const l = leaveAt(st.nowIt); if (l != null && l - n.min <= 5 && l - n.min >= -2) alerts.push(`${hhmm(l)} にここを抜けて次へ`); }
+  const nx = selId ? PLAN.items.find(x => x.id === selId) || st.next : st.next;
+  if (st.next && st.next.d === n.d) { const dep = departAt(st.next); if (dep != null && dep - n.min <= 5 && toMin(st.next.s) > n.min) alerts.push(`${hhmm(dep)} までに出発（${st.next.code} ${st.next.s} 開始）`); }
+  $('#alertBox').hidden = !alerts.length; $('#alertBox').className = 'alert'; $('#alertBox').textContent = alerts.join('　／　');
+  // 次（または選んだ予定）
+  if (nx) {
+    const sameDay = nx.d === n.d; const toStart = toMin(nx.s) - n.min; const dep = departAt(nx);
+    const lab = selId && nx !== st.next ? '選んだ予定' : '次';
+    $('#nextCard').innerHTML = `<div class="row" style="justify-content:space-between"><span class="label">${lab}</span>${sameDay && toStart > 0 ? `<span class="pill ${dep != null && dep - n.min <= 5 ? 'warn' : ''}">開始まで ${until(toStart)}${dep != null ? `・${hhmm(dep)} に出発` : ''}</span>` : ''}</div>${itemHead(nx)}${selId ? '<div class="row" style="margin-top:8px"><button type="button" id="backNext">次の予定に戻る</button></div>' : ''}`;
+    const b = $('#backNext'); if (b) b.onclick = () => { selId = null; fromOverride = null; render(); };
+  } else $('#nextCard').innerHTML = `<div class="label">次</div><p>このあとの予定はありません。</p>`;
+  navTarget = nx || null;
+  renderNav(); renderGps();
+  // 日付と 1 日の流れ
+  const days = [...new Set(PLAN.items.map(x => x.d))];
+  if (!curDay || !days.includes(curDay)) curDay = days.includes(n.d) ? n.d : days[0];
+  $('#days').innerHTML = days.map(d => `<button type="button" data-d="${d}" aria-pressed="${d === curDay}">${dayLabel(d)}</button>`).join('');
+  const list = dayItems(curDay); let html = ''; let prev = null;
+  for (const it of list) {
+    if (prev) { const gap = toMin(it.s) - toMin(prev.e); const w = walkMin(placeOf(prev)?.node, placeOf(it)?.node); if (w != null && gap < w && gap >= 0) html += `<li class="gapli" style="border:none;padding:0;cursor:default"><div class="gap">⚠ 移動 ${w} 分に対して間が ${gap} 分</div></li>`; }
+    const past = curDay < n.d || (curDay === n.d && toMin(it.e) <= n.min); const isNow = st.nowIt === it;
+    html += `<li data-id="${esc(it.id)}" class="${past ? 'past' : ''} ${isNow ? 'now' : ''} ${navTarget === it ? 'sel' : ''}"><div class="t1">${it.s}<span>${it.e}</span></div><div class="ti"><span class="code ${it.appt ? 'appt' : ''}">${esc(it.code)}</span> ${esc(it.title)}<div class="sub">${esc(it.loc || '場所未定')}</div></div></li>`;
+    prev = it;
+  }
+  $('#tl').innerHTML = html || '<li style="cursor:default">この日の予定はありません。</li>';
+}
+function departAt(it) {
+  const to = placeOf(it); if (!to) return null;
+  const pv = prevOf(it); const from = pv ? placeOf(pv) : null;
+  const w = from && from.node && to.node ? walkMin(from.node, to.node) : (to.node ? 25 : to.bld === 'ord' ? 75 : 20);
+  return w == null ? null : toMin(it.s) - w - 2;
+}
+$('#days').addEventListener('click', e => { const b = e.target.closest('button[data-d]'); if (b) { curDay = b.dataset.d; render(); } });
+$('#tl').addEventListener('click', e => { const li = e.target.closest('li[data-id]'); if (!li) return; selId = li.dataset.id; fromOverride = null; render(); $('#nextCard').scrollIntoView({behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start'}); });
+
+// ---- 道案内 ----
+let navTarget = null;
+function fromPlace() {
+  if (fromOverride) return fromOverride === 'out' ? null : {node: fromOverride, bld: VENUE.node_building[fromOverride] || fromOverride, label: (VENUE.nodes[fromOverride] || {}).label};
+  const w = whereAmI(); const pv = navTarget ? prevOf(navTarget) : null; const pp = pv ? placeOf(pv) : null;
+  if (w && (w.inside || w.d < 40)) {   // GPS で建物がわかれば、その建物の中の直前の予定の階を使う。なければ代表の階
+    if (pp && pp.bld === w.bld && pp.node) return pp;
+    const def = {north: 'north_l3', south: 'south_l3', lakeside: 'lakeside', west: 'west', hyatt: 'hyatt'}[w.bld];
+    return def ? {node: def, bld: w.bld, label: (VENUE.nodes[def] || {}).label, gps: true} : null;
+  }
+  if (pos && w && w.d >= 150) return null;   // 会場の外
+  return pp && pp.node ? pp : null;
+}
+function renderNav() {
+  const card = $('#navCard'); const it = navTarget;
+  const to = it ? placeOf(it) : null;
+  if (!it || !to) { card.hidden = !it; if (it) card.innerHTML = `<div class="label">道案内</div><p class="sub">この予定の場所が登録されていないため、道順を出せません。</p>`; return; }
+  card.hidden = false;
+  const from = fromPlace();
+  const roomName = (it.loc || '').split(/[‚,]/)[0];
+  const steps = routeSteps(from, {...to, room: roomName});
+  const w = from && from.node && to.node ? walkMin(from.node, to.node) : null;
+  const g = VENUE.geo[to.bld]; const tgt = g ? g.c : null;
+  let arrowHtml = '', distHtml = '';
+  const here = whereAmI();
+  const inside = here && here.bld === to.bld && (here.inside || here.d < 25);
+  if (pos && tgt) {
+    if (inside) { distHtml = `<div class="dist">到着</div><div class="sub">${BNAME[to.bld]} の中です。下の階と図で場所を確かめてください</div>`; }
+    else { const d = distM([pos.lat, pos.lng], tgt), b = bearing([pos.lat, pos.lng], tgt); navBearing = b;
+      distHtml = `<div class="dist">${d >= 1000 ? (d / 1000).toFixed(1) + ' km' : Math.round(d / 10) * 10 + ' m'}</div><div class="sub">${BNAME[to.bld]} は<b>${dirName(b)}</b>の方向${heading == null ? '（矢印は北が上）' : ''}</div>`; }
+  } else if (!pos) distHtml = `<div class="sub">位置情報をオンにすると、行き先の建物の方向と距離を出します。</div>`;
+  if (!inside && !(pos && tgt)) navBearing = null; if (inside) navBearing = null;
+  const opts = ['out', 'north_l1', 'north_l2', 'north_l3', 'south_l1', 'south_l3', 'south_l4', 'lakeside', 'west'];
+  const cur = from ? from.node : 'out';
+  const whereBtns = opts.map(o => `<button type="button" data-from="${o}" aria-pressed="${o === cur}">${o === 'out' ? '会場の外' : esc(((VENUE.nodes[o] || {}).label || o).replace(/（.*$/, ''))}</button>`).join('');
+  card.innerHTML = `<div class="row" style="justify-content:space-between"><span class="label">道案内 → ${esc(it.code)}</span>${w != null ? `<span class="pill">徒歩 約 ${w} 分</span>` : ''}</div>
+    <div class="nav" style="margin-top:8px">
+      <div class="compass ${inside ? 'inside' : ''}" aria-hidden="true"><span class="n">${heading == null ? 'N' : ''}</span>
+        <svg viewBox="-50 -50 100 100" id="arrow"><path d="M0,-44 L22,18 L0,6 L-22,18 Z" fill="var(--accent)"/></svg></div>
+      <div>${distHtml}</div>
+    </div>
+    <div class="sub" style="margin-top:10px">出発地：${from ? esc(from.label || '') + (from.gps ? '（GPS）' : fromOverride ? '' : '（直前の予定）') : '会場の外'}</div>
+    <div class="where" id="where">${whereBtns}</div>
+    <ol class="steps">${steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>
+    <div class="figs">${bldFig(to)}<div class="fig" style="background:var(--bg)"><canvas id="mini" aria-label="現在地と行き先の建物の位置"></canvas><div class="cap">赤い点が現在地、緑が行き先の建物（北が上）</div></div></div>
+    <div class="row" style="margin-top:10px">${tgt ? `<a class="btn" href="https://www.google.com/maps/dir/?api=1&destination=${tgt[0]},${tgt[1]}&travelmode=${to.bld === 'ord' || to.bld === 'hilton' || !from ? 'driving' : 'walking'}" target="_blank" rel="noopener">Google マップで開く</a>` : ''}</div>`;
+  $('#where').onclick = e => { const b = e.target.closest('button[data-from]'); if (b) { fromOverride = b.dataset.from; renderNav(); } };
+  turnArrow(); drawMini(to);
+}
+let navBearing = null;
+function turnArrow() {
+  const a = document.getElementById('arrow'); if (!a) return;
+  if (navBearing == null) { a.style.transform = ''; return; }
+  const r = heading == null ? navBearing : navBearing - heading;
+  a.style.transform = `rotate(${r}deg)`;
+}
+// 建物の立体図に、行き先の階と場所の印を重ねる
+function bldFig(to) {
+  const b = to && VENUE.buildings[to.bld]; if (!b) return '';
+  const lv = to.node === 'west' ? 'l3' : to.node === 'lakeside' ? 'l3' : 'l' + lvOf(to.node);
+  const L = b.levels[lv]; const pt = b.points[to.key] || null;
+  const poly = L ? `<polygon points="${L.pts.map(p => p.join(',')).join(' ')}" fill="rgba(15,110,106,.28)" stroke="#0f6e6a" stroke-width="3"/>` : '';
+  const dot = pt ? `<circle class="pulse" cx="${pt[0]}" cy="${pt[1]}" r="9" fill="#d0342c" stroke="#fff" stroke-width="3"/>` : '';
+  return `<div class="fig"><div class="pic"><img src="maps/${b.img}" alt="${esc(b.title)} の立体図" width="${b.w}" height="${b.h}"><svg class="ov" viewBox="0 0 ${b.w} ${b.h}" preserveAspectRatio="none">${poly}${dot}</svg></div><div class="cap">赤い印が行き先｜${esc(b.title)} ${esc(L ? L.label : '')}</div></div>`;
+}
+function drawMini(to) {
+  const cv = document.getElementById('mini'); if (!cv) return;
+  const css = getComputedStyle(document.documentElement); const col = k => css.getPropertyValue(k).trim();
+  const dpr = window.devicePixelRatio || 1; const W = cv.clientWidth, H = cv.clientHeight; cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
+  const geo = VENUE.geo; const show = ['north', 'south', 'lakeside', 'west', 'hyatt'];
+  if (to && (to.bld === 'hilton')) show.push('hilton');
+  const pts = []; show.forEach(k => geo[k].poly && geo[k].poly.forEach(p => pts.push(p)));
+  if (to && geo[to.bld] && !geo[to.bld].poly) pts.push(geo[to.bld].c);
+  if (pos && distM([pos.lat, pos.lng], geo.south.c) < 30000) pts.push([pos.lat, pos.lng]);
+  let la0 = Math.min(...pts.map(p => p[0])), la1 = Math.max(...pts.map(p => p[0])), lo0 = Math.min(...pts.map(p => p[1])), lo1 = Math.max(...pts.map(p => p[1]));
+  const k = Math.cos(rad((la0 + la1) / 2)); const pad = 16;
+  const sx = (W - pad * 2) / ((lo1 - lo0) * k || 1e-6), sy = (H - pad * 2) / ((la1 - la0) || 1e-6); const s = Math.min(sx, sy);
+  const ox = (W - (lo1 - lo0) * k * s) / 2, oy = (H - (la1 - la0) * s) / 2;
+  const P = p => [ox + (p[1] - lo0) * k * s, oy + (la1 - p[0]) * s];
+  for (const kk of show) {
+    const gg = geo[kk]; if (!gg.poly) continue; const tgt = to && to.bld === kk;
+    g.beginPath(); gg.poly.forEach((p, i) => { const [x, y] = P(p); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.closePath();
+    g.fillStyle = tgt ? col('--map-target') : col('--map-bld'); g.globalAlpha = tgt ? .85 : 1; g.fill(); g.globalAlpha = 1;
+    const [cx, cy] = P(gg.c); g.fillStyle = tgt ? col('--accent-ink') : col('--ink'); g.font = '600 11px ' + col('--font'); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(BNAME[kk], cx, cy);
+  }
+  if (to && geo[to.bld] && !geo[to.bld].poly) { const [x, y] = P(geo[to.bld].c); g.fillStyle = col('--map-target'); g.beginPath(); g.arc(x, y, 7, 0, 7); g.fill(); g.fillStyle = col('--ink'); g.fillText(BNAME[to.bld], x, y - 14); }
+  if (pos) {
+    const [x, y] = P([pos.lat, pos.lng]);
+    if (x > -50 && x < W + 50 && y > -50 && y < H + 50) {
+      const r = Math.max(6, pos.acc * s / 111320); g.fillStyle = col('--map-me'); g.globalAlpha = .18; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.globalAlpha = 1;
+      g.beginPath(); g.arc(x, y, 6, 0, 7); g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke();
+      if (to && geo[to.bld]) { const [tx, ty] = P(geo[to.bld].c); g.setLineDash([5, 4]); g.strokeStyle = col('--map-me'); g.beginPath(); g.moveTo(x, y); g.lineTo(tx, ty); g.stroke(); g.setLineDash([]); }
+    } else { g.fillStyle = col('--sub'); g.font = '12px ' + col('--font'); g.textAlign = 'left'; g.fillText('現在地は図の外です', 8, H - 10); }
+  }
+}
+
+// ---- 取り込み・試験 ----
+$('#impDo').onclick = () => { try { const p = parsePlan($('#impText').value.trim()); setPlan(p, true); $('#impMsg').textContent = `${p.items.length} 件を取り込みました`; $('#impText').value = ''; } catch (e) { $('#impMsg').textContent = '取り込めませんでした：' + e.message + '。「当日ナビ用にコピー」でコピーした文字をそのまま貼り付けてください'; } };
+function loadSample() { setPlan(SAMPLE, false); $('#impMsg').textContent = '見本を表示しています（保存はしていません）'; }
+$('#sample').onclick = loadSample;
+let wipeArm = null;
+$('#wipe').onclick = e => { if (!wipeArm) { e.target.textContent = 'もう一度押すと消します'; wipeArm = setTimeout(() => { wipeArm = null; e.target.textContent = '予定を消す'; }, 3000); return; } clearTimeout(wipeArm); wipeArm = null; e.target.textContent = '予定を消す'; store.del('nav_plan'); PLAN = null; selId = null; render(); $('#impMsg').textContent = '消しました'; };
+function fillSim() { const days = PLAN ? [...new Set(PLAN.items.map(x => x.d))] : ['2026-11-07', '2026-11-08', '2026-11-09']; $('#simDay').innerHTML = days.map(d => `<option value="${d}">${dayLabel(d)}</option>`).join(''); if (SIM) { $('#simDay').value = SIM.d; } }
+$('#simBox').addEventListener('toggle', fillSim);
+$('#simOn').onclick = () => { const t = $('#simTime').value || '08:00'; SIM = {d: $('#simDay').value, min: toMin(t), at: Date.now()}; store.set('nav_sim', JSON.stringify(SIM)); selId = null; render(); };
+$('#simOff').onclick = () => { SIM = null; store.del('nav_sim'); selId = null; render(); };
+
+render();
+if (store.get('nav_gps') === '1') startGps();   // 一度許可していれば、開いたときに位置情報を再開（コンパスはボタンから）
+let lastMin = -1;
+setInterval(() => { const n = nowParts(); if (n.min !== lastMin) { lastMin = n.min; render(); } }, 5000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+window.addEventListener('resize', () => { if (navTarget) drawMini(placeOf(navTarget)); });
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
