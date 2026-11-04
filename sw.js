@@ -1,5 +1,5 @@
 // 会場で電波が弱いときも開けるように、ページと館内図を端末に保存しておく
-const CACHE = 'aha-nav-v1';
+const CACHE = 'aha-nav-v2';
 const FILES = ['./', 'index.html', 'maps/north.png', 'maps/south.png', 'maps/lakeside.png', 'maps/west.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });

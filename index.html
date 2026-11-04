@@ -107,6 +107,7 @@ details > summary { cursor: pointer; font-weight: 700; }
     </div>
   </section>
 
+  <div id="syncMsg" class="alert" style="background:var(--accent-soft);color:var(--accent)" hidden></div>
   <div id="alertBox" hidden></div>
   <section class="card" id="nowCard" hidden></section>
   <section class="card" id="nextCard"></section>
@@ -120,7 +121,7 @@ details > summary { cursor: pointer; font-weight: 700; }
   <section class="card">
     <details id="impBox">
       <summary>予定を取り込む</summary>
-      <p class="sub">プログラム検索アプリのマイリストで「当日ナビ用にコピー」を押し、ここに貼り付けてください。予定はこの端末の中だけに保存されます。</p>
+      <p class="sub">プログラム検索アプリのマイリストで「当日ナビで開く」を押すと自動で取り込まれます。うまくいかないときは「当日ナビ用にコピー」を押し、ここに貼り付けてください。予定はこの端末の中だけに保存されます。</p>
       <textarea id="impText" placeholder='{"kind":"aha26-nav", ...}'></textarea>
       <div class="row"><button class="primary" id="impDo" type="button">取り込む</button><button id="sample" type="button">見本で試す</button><button id="wipe" type="button">予定を消す</button></div>
       <div class="sub" id="impMsg"></div>
@@ -229,7 +230,8 @@ function routeSteps(from, to) {
     return ['行き先の場所が登録されていません。予定の場所を入れてください'];
   }
   if (!from || !from.node) {
-    const gate = tb === 'north' ? 'North 1F の Gate 20–22' : tb === 'lakeside' ? 'Lakeside 北側の Gate 31–34' : tb === 'west' ? 'West の Gate 43–44' : 'South 1F の Gate 1–3';
+    if (from && from.bld === 'ord') return ['到着ロビーからタクシー乗り場へ（国際線は Terminal 5）。ホテルに寄るか会場へ直行するかを先に決める', 'タクシーで McCormick Place South Building へ（40〜60 分。大きな荷物は会場のバッグチェックへ）', '降車は South 1F の Gate 4（タクシー降車口。会議室 S10x に一番近い）', dest + ' へ'];
+    const gate = tb === 'north' ? 'North 1F の Gate 20–22' : tb === 'lakeside' ? 'Lakeside 北側の Gate 31–34' : tb === 'west' ? 'West の Gate 43–44' : 'South 1F の Gate 1–3（タクシーは Gate 4）';
     const s = [`ホテルからシャトルかタクシーで McCormick Place へ（降車は ${gate} が近い）`];
     if (tb === 'south' && tl === 3) s.push('South 1F からエスカレーターで 3 階の Hall A（Science & Technology Hall）へ');
     else if (tb === 'south' && tl === 1) s.push('South 1F のロビーを奥へ進むと会議室 S100–S106');
@@ -349,7 +351,7 @@ function render() {
   $('#clock').innerHTML = `${hhmm(n.min)}<small>シカゴ ${dayLabel(n.d)}${n.sim ? '・試験中' : ''}</small>`;
   if (!PLAN) {
     $('#nowCard').hidden = true; $('#navCard').hidden = true; $('#alertBox').hidden = true;
-    $('#nextCard').innerHTML = `<div class="label">予定がまだありません</div><p>プログラム検索アプリのマイリストで<b>「当日ナビ用にコピー」</b>を押し、下の「予定を取り込む」に貼り付けてください。</p><div class="row"><button class="primary" type="button" id="openImp">予定を取り込む</button><button type="button" id="openSample">見本で試す</button></div>`;
+    $('#nextCard').innerHTML = `<div class="label">予定がまだありません</div><p>プログラム検索アプリのマイリストで<b>「当日ナビで開く」</b>を押すと、予定がこのページに入ります。うまくいかないときは「当日ナビ用にコピー」を押し、下の「予定を取り込む」に貼り付けてください。</p><div class="row"><button class="primary" type="button" id="openImp">予定を取り込む</button><button type="button" id="openSample">見本で試す</button></div>`;
     $('#openImp').onclick = () => { $('#impBox').open = true; $('#impText').focus(); };
     $('#openSample').onclick = loadSample;
     $('#days').innerHTML = ''; $('#tl').innerHTML = ''; return;
@@ -391,8 +393,11 @@ function render() {
 function departAt(it) {
   const to = placeOf(it); if (!to) return null;
   const pv = prevOf(it); const from = pv ? placeOf(pv) : null;
-  const w = from && from.node && to.node ? walkMin(from.node, to.node) : (to.node ? 25 : to.bld === 'ord' ? 75 : 20);
-  return w == null ? null : toMin(it.s) - w - 2;
+  const w = from && from.node && to.node ? walkMin(from.node, to.node) : from && from.bld === 'ord' ? 60 : from && from.bld === 'hilton' ? 20 : (to.node ? 25 : to.bld === 'ord' ? 75 : 20);
+  if (w == null) return null;
+  let dep = toMin(it.s) - w - 2;
+  if (from && from.bld === 'ord' && pv && dep < toMin(pv.e)) dep = toMin(pv.e);   // 空港の予定が終わる前には出られない
+  return dep;
 }
 $('#days').addEventListener('click', e => { const b = e.target.closest('button[data-d]'); if (b) { curDay = b.dataset.d; render(); } });
 $('#tl').addEventListener('click', e => { const li = e.target.closest('li[data-id]'); if (!li) return; selId = li.dataset.id; fromOverride = null; render(); $('#nextCard').scrollIntoView({behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start'}); });
@@ -408,7 +413,7 @@ function fromPlace() {
     return def ? {node: def, bld: w.bld, label: (VENUE.nodes[def] || {}).label, gps: true} : null;
   }
   if (pos && w && w.d >= 150) return null;   // 会場の外
-  return pp && pp.node ? pp : null;
+  return pp && (pp.node || pp.bld === 'ord' || pp.bld === 'hilton') ? pp : null;   // 直前の予定が空港・ホテルなら、そこからの道順
 }
 function renderNav() {
   const card = $('#navCard'); const it = navTarget;
@@ -500,11 +505,23 @@ function loadSample() { setPlan(SAMPLE, false); $('#impMsg').textContent = '見�
 $('#sample').onclick = loadSample;
 let wipeArm = null;
 $('#wipe').onclick = e => { if (!wipeArm) { e.target.textContent = 'もう一度押すと消します'; wipeArm = setTimeout(() => { wipeArm = null; e.target.textContent = '予定を消す'; }, 3000); return; } clearTimeout(wipeArm); wipeArm = null; e.target.textContent = '予定を消す'; store.del('nav_plan'); PLAN = null; selId = null; render(); $('#impMsg').textContent = '消しました'; };
-function fillSim() { const days = PLAN ? [...new Set(PLAN.items.map(x => x.d))] : ['2026-11-07', '2026-11-08', '2026-11-09']; $('#simDay').innerHTML = days.map(d => `<option value="${d}">${dayLabel(d)}</option>`).join(''); if (SIM) { $('#simDay').value = SIM.d; } }
+function fillSim() { const days = PLAN ? [...new Set(PLAN.items.map(x => x.d))] : ['2026-11-06', '2026-11-07', '2026-11-08', '2026-11-09']; $('#simDay').innerHTML = days.map(d => `<option value="${d}">${dayLabel(d)}</option>`).join(''); if (SIM) { $('#simDay').value = SIM.d; } }
 $('#simBox').addEventListener('toggle', fillSim);
 $('#simOn').onclick = () => { const t = $('#simTime').value || '08:00'; SIM = {d: $('#simDay').value, min: toMin(t), at: Date.now()}; store.set('nav_sim', JSON.stringify(SIM)); selId = null; render(); };
 $('#simOff').onclick = () => { SIM = null; store.del('nav_sim'); selId = null; render(); };
 
+// 検索アプリの「当日ナビで開く」で、URL の #plan= に予定が付いて開いたときは取り込んで保存し、URL からは消す
+function importFromHash() {
+  const h = location.hash || ''; if (!h.startsWith('#plan=')) return false;
+  let m = '';
+  try { const p = parsePlan(decodeURIComponent(h.slice(6))); PLAN = p; store.set('nav_plan', JSON.stringify(p)); selId = null; fromOverride = null; m = `検索アプリから ${p.items.length} 件の予定を取り込みました`; }
+  catch (e) { m = '予定を取り込めませんでした：' + e.message + '。検索アプリで「当日ナビ用にコピー」を押し、下の「予定を取り込む」に貼り付けてください'; }
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  const el = $('#syncMsg'); el.textContent = m; el.hidden = false; setTimeout(() => { el.hidden = true; }, 20000);
+  return true;
+}
+importFromHash();
+window.addEventListener('hashchange', () => { if (importFromHash()) render(); });
 render();
 if (store.get('nav_gps') === '1') startGps();   // 一度許可していれば、開いたときに位置情報を再開（コンパスはボタンから）
 let lastMin = -1;
