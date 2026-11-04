@@ -74,6 +74,13 @@ ol.steps li::marker { font-weight: 700; color: var(--accent); }
 canvas#mini { display: block; width: 100%; height: 220px; background: var(--bg); }
 @keyframes pulse { 0%,100% { r: 9; opacity: 1 } 50% { r: 13; opacity: .55 } }
 .pulse { animation: pulse 1.4s ease-in-out infinite; }
+.fig .lv-to { fill: rgba(15,110,106,.28); stroke: #0f6e6a; stroke-width: 3; }
+.fig .lv-from { fill: rgba(26,92,255,.18); stroke: #1a5cff; stroke-width: 2.5; stroke-dasharray: 6 4; }
+.fig .rt-halo { fill: none; stroke: #fff; stroke-width: 9; stroke-linejoin: round; stroke-linecap: round; opacity: .95; }
+.fig .rt { fill: none; stroke: #0f6e6a; stroke-width: 3.5; stroke-dasharray: 9 6; stroke-linejoin: round; stroke-linecap: round; }
+.fig .rt-start { fill: #1a5cff; stroke: #fff; stroke-width: 3; }
+.fig .rt-end { fill: #d0342c; stroke: #fff; stroke-width: 3; }
+.fig .rt-tag { font: 700 15px var(--font); fill: #0f3d3e; stroke: #fff; stroke-width: 5; stroke-linejoin: round; }
 @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } .compass svg { transition: none; } }
 /* 1 日の流れ */
 .days { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
@@ -132,7 +139,7 @@ details > summary { cursor: pointer; font-weight: 700; }
       <div class="row"><select id="simDay"></select><input type="time" id="simTime" value="08:20"><button id="simOn" type="button">この時刻にする</button><button id="simOff" type="button">現在時刻に戻す</button></div>
     </details>
   </section>
-  <p class="sub">時刻はすべてシカゴ時間です。建物の位置は OpenStreetMap、館内図は McCormick Place の立体図をもとにした目安です。屋内では GPS が数十 m ずれることがあり、階はわかりません。</p>
+  <p class="sub">立体図の線はおおよその道順です（青＝出発地、赤＝行き先。階の移動はエスカレーター、建物の間は 3 階の Grand Concourse）。時刻はすべてシカゴ時間です。建物の位置は OpenStreetMap、館内図は McCormick Place の立体図をもとにした目安です。屋内では GPS が数十 m ずれることがあり、階はわかりません。</p>
 </main>
 
 <script>
@@ -413,7 +420,8 @@ $('#tl').addEventListener('click', e => { const li = e.target.closest('li[data-i
 let navTarget = null;
 function fromPlace() {
   if (fromOverride) return fromOverride === 'out' ? null : {node: fromOverride, bld: VENUE.node_building[fromOverride] || fromOverride, label: (VENUE.nodes[fromOverride] || {}).label};
-  const w = whereAmI(); const pv = navTarget ? prevOf(navTarget) : null; const pp = pv ? placeOf(pv) : null;
+  const w = whereAmI(); const cur = state().nowIt;   // 今いる予定があれば、そこが出発地（同時刻に始まる予定でも拾える）
+  const pv = navTarget ? ((cur && cur !== navTarget) ? cur : prevOf(navTarget)) : null; const pp = pv ? placeOf(pv) : null;
   if (w && (w.inside || w.d < 40)) {   // GPS で建物がわかれば、その建物の中の直前の予定の階を使う。なければ代表の階
     if (pp && pp.bld === w.bld && pp.node) return pp;
     const def = {north: 'north_l3', south: 'south_l3', lakeside: 'lakeside', west: 'west', hyatt: 'hyatt'}[w.bld];
@@ -453,7 +461,7 @@ function renderNav() {
     <div class="sub" style="margin-top:10px">出発地：${from ? esc(from.label || '') + (from.gps ? '（GPS）' : fromOverride ? '' : '（直前の予定）') : '会場の外'}</div>
     <div class="where" id="where">${whereBtns}</div>
     <ol class="steps">${steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>
-    <div class="figs">${bldFig(to)}<div class="fig" style="background:var(--bg)"><canvas id="mini" aria-label="現在地と行き先の建物の位置"></canvas><div class="cap">赤い点が現在地、緑が行き先の建物（北が上）</div></div></div>
+    <div class="figs">${routeFigs(from, {...to, room: roomName})}<div class="fig" style="background:var(--bg)"><canvas id="mini" aria-label="現在地と行き先の建物の位置"></canvas><div class="cap">赤い点が現在地、緑が行き先の建物（北が上）</div></div></div>
     <div class="row" style="margin-top:10px">${tgt ? `<a class="btn" href="https://www.google.com/maps/dir/?api=1&destination=${tgt[0]},${tgt[1]}&travelmode=${to.bld === 'ord' || to.bld === 'hilton' || !from ? 'driving' : 'walking'}" target="_blank" rel="noopener">Google マップで開く</a>` : ''}</div>`;
   $('#where').onclick = e => { const b = e.target.closest('button[data-from]'); if (b) { fromOverride = b.dataset.from; renderNav(); } };
   turnArrow(); drawMini(to);
@@ -465,14 +473,59 @@ function turnArrow() {
   const r = heading == null ? navBearing : navBearing - heading;
   a.style.transform = `rotate(${r}deg)`;
 }
-// 建物の立体図に、行き先の階と場所の印を重ねる
-function bldFig(to) {
-  const b = to && VENUE.buildings[to.bld]; if (!b) return '';
-  const lv = to.node === 'west' ? 'l3' : to.node === 'lakeside' ? 'l3' : 'l' + lvOf(to.node);
-  const L = b.levels[lv]; const pt = b.points[to.key] || null;
-  const poly = L ? `<polygon points="${L.pts.map(p => p.join(',')).join(' ')}" fill="rgba(15,110,106,.28)" stroke="#0f6e6a" stroke-width="3"/>` : '';
-  const dot = pt ? `<circle class="pulse" cx="${pt[0]}" cy="${pt[1]}" r="9" fill="#d0342c" stroke="#fff" stroke-width="3"/>` : '';
-  return `<div class="fig"><div class="pic"><img src="maps/${b.img}" alt="${esc(b.title)} の立体図" width="${b.w}" height="${b.h}"><svg class="ov" viewBox="0 0 ${b.w} ${b.h}" preserveAspectRatio="none">${poly}${dot}</svg></div><div class="cap">赤い印が行き先｜${esc(b.title)} ${esc(L ? L.label : '')}</div></div>`;
+// 建物の立体図に、出発地（青）から行き先（赤）までのおおよその経路を線で重ねる。
+// 階の移動は各階の中心を経由し、建物をまたぐときは連絡口（Grand Concourse・Sky Bridge・入口）で 2 枚に分ける
+const HUB = {   // 立体図の上の連絡口と入口の位置（目安）
+  south: {gc: [380, 212], gate: [232, 318], west: [300, 412], lake: [382, 250]},
+  north: {gc: [214, 178], gate: [380, 382], lake: [422, 172]},
+  lakeside: {gate: [300, 100], bridge: [240, 120]},
+  west: {gate: [400, 380], bridge: [320, 332]}
+};
+const cen = pts => [Math.round(pts.reduce((a, p) => a + p[0], 0) / pts.length), Math.round(pts.reduce((a, p) => a + p[1], 0) / pts.length)];
+function lvKey(node, bld) { if (!node) return null; if (bld === 'west' || bld === 'lakeside') return 'l3'; const n = lvOf(node); return n ? 'l' + n : null; }
+function cenLv(bld, lv) { const b = VENUE.buildings[bld]; const L = b && b.levels[lv]; return L ? cen(L.pts) : null; }
+function figSvg(bld, o) {
+  const b = VENUE.buildings[bld]; if (!b) return '';
+  const poly = (lv, cls) => { const L = b.levels[lv]; return L ? `<polygon points="${L.pts.map(p => p.join(',')).join(' ')}" class="${cls}"/>` : ''; };
+  const id = 'arr_' + bld + '_' + (o.tag || 'x');
+  const path = (o.path || []).filter(Boolean);
+  const pstr = path.map(p => p.join(',')).join(' ');
+  const line = path.length > 1 ? `<polyline points="${pstr}" class="rt-halo"/><polyline points="${pstr}" class="rt" marker-end="url(#${id})"/>` : '';
+  const dot = (pt, cls) => pt ? `<circle class="${cls}" cx="${pt[0]}" cy="${pt[1]}" r="8"/>` : '';
+  const tag = (pt, txt, dx) => pt ? `<text class="rt-tag" x="${pt[0] + (dx || 0)}" y="${pt[1] - 12}" text-anchor="middle" paint-order="stroke">${esc(txt)}</text>` : '';
+  const Lt = b.levels[o.toLv], Lf = b.levels[o.fromLv];
+  const capLv = Lt ? Lt.label : Lf ? Lf.label : '';
+  return `<div class="fig"><div class="pic"><img src="maps/${b.img}" alt="${esc(b.title)} の立体図" width="${b.w}" height="${b.h}"><svg class="ov" viewBox="0 0 ${b.w} ${b.h}" preserveAspectRatio="none">
+    <defs><marker id="${id}" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 Z" fill="#0f6e6a"/></marker></defs>
+    ${o.fromLv && o.fromLv !== o.toLv ? poly(o.fromLv, 'lv-from') : ''}${o.toLv ? poly(o.toLv, 'lv-to') : ''}${line}
+    ${dot(o.start, 'rt-start')}${o.end ? `<circle class="pulse rt-end" cx="${o.end[0]}" cy="${o.end[1]}" r="9"/>` : ''}
+    ${o.exitLabel ? tag(path[path.length - 1], o.exitLabel, 0) : ''}${o.enterLabel ? tag(path[0], o.enterLabel, 0) : ''}
+  </svg></div><div class="cap">${esc(o.cap)}｜${esc(b.title)} ${esc(capLv)}</div></div>`;
+}
+function routeFigs(from, to) {
+  const tb = to.bld; const B = VENUE.buildings[tb]; if (!B) return '';
+  const toLv = lvKey(to.node, tb); const toPt = B.points[to.key] || cenLv(tb, toLv);
+  const fb = from && from.bld, fB = fb && VENUE.buildings[fb]; const fromLv = fb && fB ? lvKey(from.node, fb) : null;
+  const NS = x => x === 'north' || x === 'south';
+  if (fB && fromLv && fb === tb) {   // 同じ建物: 階を移って行き先へ
+    const fromPt = B.points[from.key] || cenLv(fb, fromLv);
+    const via = fromLv !== toLv ? [cenLv(fb, fromLv), cenLv(tb, toLv)] : [];
+    return figSvg(tb, {tag: 'same', path: [fromPt, ...via, toPt], start: fromPt, end: toPt, fromLv, toLv, cap: '青が出発地、赤が行き先。線はおおよその道順'});
+  }
+  if (fB && fromLv && fb !== tb) {   // 別の建物: 出発側（連絡口まで）と到着側（連絡口から）の 2 枚
+    const fromPt = fB.points[from.key] || cenLv(fb, fromLv);
+    const conn = (x, other) => NS(x) && NS(other) ? HUB[x].gc : other === 'lakeside' ? HUB[x].lake : other === 'west' ? HUB[x].west : (x === 'lakeside' || x === 'west') ? HUB[x].bridge : HUB[x].gate;
+    const outPt = conn(fb, tb), inPt = conn(tb, fb);
+    const viaOut = (NS(fb) && fromLv !== 'l3') ? [cenLv(fb, fromLv), cenLv(fb, 'l3')] : [];
+    const viaIn = (NS(tb) && toLv !== 'l3') ? [cenLv(tb, 'l3'), cenLv(tb, toLv)] : [];
+    const how = NS(fb) && NS(tb) ? 'Grand Concourse' : 'Sky Bridge';
+    return figSvg(fb, {tag: 'out', path: [fromPt, ...viaOut, outPt], start: fromPt, fromLv, exitLabel: `${how} で ${BNAME[tb]} へ`, cap: '出発側: 青から連絡口へ'})
+         + figSvg(tb, {tag: 'in', path: [inPt, ...viaIn, toPt], end: toPt, toLv, enterLabel: `${BNAME[fb]} から`, cap: '到着側: 連絡口から赤へ'});
+  }
+  // 会場の外（ホテル・空港・出発地不明）から: 入口から行き先へ
+  const gate = HUB[tb] && HUB[tb].gate;
+  const via = NS(tb) && toLv && toLv !== 'l1' ? [cenLv(tb, 'l1'), cenLv(tb, toLv)] : [];
+  return figSvg(tb, {tag: 'gate', path: gate ? [gate, ...via, toPt] : [], start: gate, end: toPt, toLv, enterLabel: gate ? '入口' : '', cap: '青が入口、赤が行き先。線はおおよその道順'});
 }
 function drawMini(to) {
   const cv = document.getElementById('mini'); if (!cv) return;
