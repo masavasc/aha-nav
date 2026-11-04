@@ -123,7 +123,7 @@ details > summary { cursor: pointer; font-weight: 700; }
       <summary>予定を取り込む</summary>
       <p class="sub">プログラム検索アプリのマイリストで「当日ナビで開く」を押すと自動で取り込まれます。うまくいかないときは「当日ナビ用にコピー」を押し、ここに貼り付けてください。予定はこの端末の中だけに保存されます。</p>
       <textarea id="impText" placeholder='{"kind":"aha26-nav", ...}'></textarea>
-      <div class="row"><button class="primary" id="impDo" type="button">取り込む</button><button id="sample" type="button">見本で試す</button><button id="wipe" type="button">予定を消す</button></div>
+      <div class="row"><button class="primary" id="impDo" type="button">取り込む</button><button id="impClip" type="button">クリップボードから取り込む</button><button id="sample" type="button">見本で試す</button><button id="wipe" type="button">予定を消す</button></div>
       <div class="sub" id="impMsg"></div>
     </details>
     <details id="simBox" style="margin-top:10px">
@@ -151,6 +151,12 @@ const dayLabel = d => { const [y, mo, da] = d.split('-').map(Number); const w = 
 let PLAN = null;
 try { PLAN = JSON.parse(store.get('nav_plan') || 'null'); } catch (e) { PLAN = null; }
 function setPlan(p, save) { PLAN = p; if (save) store.set('nav_plan', JSON.stringify(p)); selId = null; render(); }
+// 保存済みの予定が今の画面と違えば入れ替える（別のタブで取り込んだとき、閉じて開き直したとき、ホーム画面から戻ったとき）
+function reloadPlan() {
+  let p = null; try { p = JSON.parse(store.get('nav_plan') || 'null'); } catch (e) { return false; }
+  if (JSON.stringify(p) === JSON.stringify(PLAN)) return false;
+  PLAN = p; selId = null; fromOverride = null; render(); return true;
+}
 function parsePlan(text) {
   const j = JSON.parse(text);
   if (!j || !Array.isArray(j.items)) throw new Error('予定の一覧が見つかりません');
@@ -351,8 +357,9 @@ function render() {
   $('#clock').innerHTML = `${hhmm(n.min)}<small>シカゴ ${dayLabel(n.d)}${n.sim ? '・試験中' : ''}</small>`;
   if (!PLAN) {
     $('#nowCard').hidden = true; $('#navCard').hidden = true; $('#alertBox').hidden = true;
-    $('#nextCard').innerHTML = `<div class="label">予定がまだありません</div><p>プログラム検索アプリのマイリストで<b>「当日ナビで開く」</b>を押すと、予定がこのページに入ります。うまくいかないときは「当日ナビ用にコピー」を押し、下の「予定を取り込む」に貼り付けてください。</p><div class="row"><button class="primary" type="button" id="openImp">予定を取り込む</button><button type="button" id="openSample">見本で試す</button></div>`;
+    $('#nextCard').innerHTML = `<div class="label">予定がまだありません</div><p>プログラム検索アプリのマイリストで<b>「当日ナビで開く」</b>を押すと、予定がこのページに入ります。うまくいかないときは「当日ナビ用にコピー」を押し、下の「予定を取り込む」に貼り付けてください。</p><div class="row"><button class="primary" type="button" id="openImp">予定を取り込む</button><button type="button" id="openClip">クリップボードから取り込む</button><button type="button" id="openSample">見本で試す</button></div>`;
     $('#openImp').onclick = () => { $('#impBox').open = true; $('#impText').focus(); };
+    $('#openClip').onclick = importClipboard;
     $('#openSample').onclick = loadSample;
     $('#days').innerHTML = ''; $('#tl').innerHTML = ''; return;
   }
@@ -501,6 +508,11 @@ function drawMini(to) {
 
 // ---- 取り込み・試験 ----
 $('#impDo').onclick = () => { try { const p = parsePlan($('#impText').value.trim()); setPlan(p, true); $('#impMsg').textContent = `${p.items.length} 件を取り込みました`; $('#impText').value = ''; } catch (e) { $('#impMsg').textContent = '取り込めませんでした：' + e.message + '。「当日ナビ用にコピー」でコピーした文字をそのまま貼り付けてください'; } };
+async function importClipboard() {
+  try { const t = await navigator.clipboard.readText(); const p = parsePlan(t.trim()); setPlan(p, true); $('#impMsg').textContent = `クリップボードから ${p.items.length} 件を取り込みました`; const el = $('#syncMsg'); el.textContent = $('#impMsg').textContent; el.hidden = false; setTimeout(() => { el.hidden = true; }, 20000); }
+  catch (e) { $('#impBox').open = true; $('#impMsg').textContent = 'クリップボードから取り込めませんでした：' + (e && e.message || e) + '。検索アプリで「当日ナビ用にコピー」を押してから、上の欄に貼り付けて「取り込む」を押してください'; }
+}
+$('#impClip').onclick = importClipboard;
 function loadSample() { setPlan(SAMPLE, false); $('#impMsg').textContent = '見本を表示しています（保存はしていません）'; }
 $('#sample').onclick = loadSample;
 let wipeArm = null;
@@ -526,7 +538,10 @@ render();
 if (store.get('nav_gps') === '1') startGps();   // 一度許可していれば、開いたときに位置情報を再開（コンパスはボタンから）
 let lastMin = -1;
 setInterval(() => { const n = nowParts(); if (n.min !== lastMin) { lastMin = n.min; render(); } }, 5000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !reloadPlan()) render(); });
+window.addEventListener('pageshow', e => { if (e.persisted && !reloadPlan()) render(); });   // 戻る・進むで復元されたとき
+window.addEventListener('focus', () => { reloadPlan(); });
+window.addEventListener('storage', e => { if (e.key === 'nav_plan' || e.key === null) reloadPlan(); });   // 別のタブで取り込んだとき
 window.addEventListener('resize', () => { if (navTarget) drawMini(placeOf(navTarget)); });
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
