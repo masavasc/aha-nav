@@ -43,6 +43,7 @@ h1 { font-size: 1.15rem; margin: 0; letter-spacing: .02em; }
 .tm { font-variant-numeric: tabular-nums; font-weight: 700; }
 .code { display: inline-block; font-size: .78rem; font-weight: 700; padding: 1px 7px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
 .code.appt { background: var(--appt-soft); color: var(--appt); }
+.code.poster { background: var(--warn-soft); color: var(--warn); margin-left: 2px; }
 .room { font-weight: 700; }
 .sub { color: var(--sub); font-size: .88rem; }
 .note { font-size: .9rem; background: var(--bg); border-radius: 8px; padding: 6px 9px; margin-top: 6px; overflow-wrap: anywhere; }
@@ -150,6 +151,9 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const store = { get(k){ try { return localStorage.getItem(k); } catch(e) { return null; } }, set(k,v){ try { localStorage.setItem(k,v); } catch(e) {} }, del(k){ try { localStorage.removeItem(k); } catch(e) {} } };
 const toMin = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+// ポスター系（MDP: モデレーテッドデジタルポスター、APBS/ABPS/ABP: ポスターボード、APS1/APS2/APSCR: Poster Hall）だけ札を付ける
+const isPoster = code => /\.(MDP|APBS|ABPS|ABP)\./.test(code || '') || /^APS(\d|CR)/.test(code || '');
+const posterTag = it => isPoster(it.code) ? '<span class="code poster">ポスター</span>' : '';
 const hhmm = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
 const DOW = ['日','月','火','水','木','金','土'];
 const dayLabel = d => { const [y, mo, da] = d.split('-').map(Number); const w = new Date(Date.UTC(y, mo - 1, da)).getUTCDay(); return `${mo}/${da}（${DOW[w]}）`; };
@@ -353,7 +357,7 @@ function state() {
 function prevOf(it) { const items = PLAN.items; const i = items.indexOf(it); for (let k = i - 1; k >= 0; k--) { if (items[k].d !== it.d) return null; if (toMin(items[k].s) < toMin(it.s)) return items[k]; } return null; }
 function itemHead(it) {
   const p = placeOf(it);
-  return `<div class="row"><span class="code ${it.appt ? 'appt' : ''}">${esc(it.code)}</span><span class="tm">${it.s}–${it.e}</span>${it.d !== nowParts().d ? `<span class="sub">${dayLabel(it.d)}</span>` : ''}</div>
+  return `<div class="row"><span class="code ${it.appt ? 'appt' : ''}">${esc(it.code)}</span>${posterTag(it)}<span class="tm">${it.s}–${it.e}</span>${it.d !== nowParts().d ? `<span class="sub">${dayLabel(it.d)}</span>` : ''}</div>
     <div class="big">${esc(it.title)}</div>
     <div><span class="room">${esc(it.loc || '場所未定')}</span>${p && p.label ? ` <span class="sub">｜${esc(p.label)}</span>` : ''}</div>
     ${it.note ? `<div class="note">${esc(it.note)}</div>` : ''}`;
@@ -399,7 +403,7 @@ function render() {
   for (const it of list) {
     if (prev) { const gap = toMin(it.s) - toMin(prev.e); const w = walkMin(placeOf(prev)?.node, placeOf(it)?.node); if (w != null && gap < w && gap >= 0) html += `<li class="gapli" style="border:none;padding:0;cursor:default"><div class="gap">⚠ 移動 ${w} 分に対して間が ${gap} 分</div></li>`; }
     const past = curDay < n.d || (curDay === n.d && toMin(it.e) <= n.min); const isNow = st.nowIt === it;
-    html += `<li data-id="${esc(it.id)}" class="${past ? 'past' : ''} ${isNow ? 'now' : ''} ${navTarget === it ? 'sel' : ''}"><div class="t1">${it.s}<span>${it.e}</span></div><div class="ti"><span class="code ${it.appt ? 'appt' : ''}">${esc(it.code)}</span> ${esc(it.title)}<div class="sub">${esc(it.loc || '場所未定')}</div></div></li>`;
+    html += `<li data-id="${esc(it.id)}" class="${past ? 'past' : ''} ${isNow ? 'now' : ''} ${navTarget === it ? 'sel' : ''}"><div class="t1">${it.s}<span>${it.e}</span></div><div class="ti"><span class="code ${it.appt ? 'appt' : ''}">${esc(it.code)}</span>${posterTag(it)} ${esc(it.title)}<div class="sub">${esc(it.loc || '場所未定')}</div></div></li>`;
     prev = it;
   }
   $('#tl').innerHTML = html || '<li style="cursor:default">この日の予定はありません。</li>';
